@@ -1,0 +1,166 @@
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>jsQR Demo</title>
+    <script src="{{ url_for('static', filename='js/jsQR.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/axios.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/moment.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/moment-with-locales.js') }}"></script>
+    <script src="{{ url_for('static', filename='fontawesome/js/all.js') }}"></script>
+    <link href="{{ url_for('static', filename='css/bulmaswatch.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='fontawesome/css/all.css') }}" rel="stylesheet">
+</head>
+<body>
+<section class="hero is-fullheight is-dark is-bold">
+    <div class="hero-body">
+        <div class="container">
+            <h1 class="title">MUMT Victor : ระบบบันทึกรายชื่อด้วย QR code <span class="help">พัฒนาโดยหน่วยสารสนเทศ คณะเทคนิคการแพทย์</span></h1>
+            <div class="columns">
+                <div class="column">
+                    <div id="loadingMessage">🎥 Unable to access video stream (please make sure you have a webcam enabled)
+                    </div>
+                    <canvas id="canvas" hidden></canvas>
+                </div>
+                <div class="column">
+                    <div class="message is-info">
+                        <div class="message-header">
+                            คำแนะนำ
+                        </div>
+                        <div class="message-body">
+                            <ul>
+                                <li class="is-size-5">แสดง QR code ของท่านโดยหันเข้าหากล้องจนกว่าจะปรากฏกรอบสีแดงรอบ QR code ที่แสดงว่ากล้องสามารถอ่าน code ของท่านได้</li>
+                                <li class="is-size-5">
+                                    เมื่อระบบได้รับข้อมูลแล้ว โปรดรออย่างน้อย 1 นาทีหากต้องการเช็คอินหรือเช็คเอาท์อีกครั้ง เวลาใหม่จะไม่บันทึกหากแสกนติดต่อกันภายใน 1 นาที
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div id="output" hidden class="message is-warning">
+                        <div class="message-header">
+                            <span>Status</span>
+                        </div>
+                        <div class="message-body">
+                            <div id="outputMessage" class="has-text-centered">
+                                <span class="is-size-4">No QR code detected.</span>
+                            </div>
+                            <br>
+                            <div id="outputDataPanel">
+                                <p class="has-text-centered">
+                                <span class="icon is-large">
+                                    <i class="fas fa-check-circle has-text-success fa-4x"></i>
+                                </span>
+                                </p>
+                                <br>
+                                <p class="has-text-centered">
+                                <span class="is-size-4">
+                                <b>Code:</b> <span id="outputData"></span>
+                                </span>
+                                    <br>
+                                    <span id="scanTime" class="is-size-4"></span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</section>
+<script>
+    var video = document.createElement("video");
+    var canvasElement = document.getElementById("canvas");
+    var canvas = canvasElement.getContext("2d");
+    var loadingMessage = document.getElementById("loadingMessage");
+    var outputContainer = document.getElementById("output");
+    var outputMessage = document.getElementById("outputMessage");
+    var outputData = document.getElementById("outputData");
+    var outputDataPanel = document.getElementById("outputDataPanel");
+    var scanTime = document.getElementById("scanTime");
+    var currentCode = '';
+    var lastScanTime = new Date();
+    moment.locale('th');
+
+    function drawLine(begin, end, color) {
+        canvas.beginPath();
+        canvas.moveTo(begin.x, begin.y);
+        canvas.lineTo(end.x, end.y);
+        canvas.lineWidth = 4;
+        canvas.strokeStyle = color;
+        canvas.stroke();
+    }
+
+    // Use facingMode: environment to attemt to get the front camera on phones
+    navigator.mediaDevices.getUserMedia({video: {facingMode: "environment"}}).then(function (stream) {
+        video.srcObject = stream;
+        video.setAttribute("playsinline", true); // required to tell iOS safari we don't want fullscreen
+        video.play();
+        requestAnimationFrame(tick);
+    });
+
+    function tick() {
+        loadingMessage.innerText = "⌛ Loading video..."
+        if (video.readyState === video.HAVE_ENOUGH_DATA) {
+            loadingMessage.hidden = true;
+            canvasElement.hidden = false;
+            outputContainer.hidden = false;
+
+            canvasElement.height = video.videoHeight;
+            canvasElement.width = video.videoWidth;
+            canvas.drawImage(video, 0, 0, canvasElement.width, canvasElement.height);
+            var imageData = canvas.getImageData(0, 0, canvasElement.width, canvasElement.height);
+            var code = jsQR(imageData.data, imageData.width, imageData.height, {
+                inversionAttempts: "dontInvert",
+            });
+            if (code) {
+                drawLine(code.location.topLeftCorner, code.location.topRightCorner, "#FF3B58");
+                drawLine(code.location.topRightCorner, code.location.bottomRightCorner, "#FF3B58");
+                drawLine(code.location.bottomRightCorner, code.location.bottomLeftCorner, "#FF3B58");
+                drawLine(code.location.bottomLeftCorner, code.location.topLeftCorner, "#FF3B58");
+                outputMessage.hidden = true;
+                outputDataPanel.hidden = false;
+                outputData.parentElement.hidden = false;
+                if (currentCode != code.data) {
+                    console.log(code.data, '1', currentCode)
+                    currentCode = code.data;
+                    axios({
+                        method: 'post',
+                        url: '/api/scan',
+                        data: {
+                            code: code.data
+                        }
+                    }).then(function (resp) {
+                        outputData.innerText = code.data + " " + resp.data.name;
+                        scanTime.innerText = "แสกนเมื่อ " + moment(resp.data.checked_in).format('lll');
+                    })
+                } else {
+                    // the same QR code can be rescanned after one minute
+                    let rightnow = new Date();
+                    let gap = rightnow - lastScanTime;
+                    let diffMins = Math.round(((gap % 86400000) % 3600000) / 60000);
+                    if (diffMins > 1) {
+                        console.log(code.data, currentCode)
+                        currentCode = code.data;
+                        axios({
+                            method: 'post',
+                            url: '/api/scan',
+                            data: {
+                                code: code.data
+                            }
+                        }).then(function (resp) {
+                            outputData.innerText = code.data + " " + resp.data.name;
+                            scanTime.innerText = "แสกนเมื่อ " + moment(resp.data.checked_in).format('lll');
+                        })
+                    }
+                }
+            } else {
+                outputMessage.hidden = false;
+                outputData.parentElement.hidden = true;
+                outputDataPanel.hidden = true;
+            }
+        }
+        requestAnimationFrame(tick);
+    }
+</script>
+</body>
+</html>
