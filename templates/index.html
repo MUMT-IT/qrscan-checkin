@@ -120,9 +120,9 @@
                 outputMessage.hidden = true;
                 outputDataPanel.hidden = false;
                 outputData.parentElement.hidden = false;
-                if (currentCode != code.data) {
-                    console.log(code.data, '1', currentCode)
+                if (currentCode !== code.data) {
                     currentCode = code.data;
+                    lastScanTime = new Date();
                     axios({
                         method: 'post',
                         url: '/api/scan',
@@ -138,9 +138,8 @@
                     let rightnow = new Date();
                     let gap = rightnow - lastScanTime;
                     let diffMins = Math.round(((gap % 86400000) % 3600000) / 60000);
+                    lastScanTime = rightnow;
                     if (diffMins > 1) {
-                        console.log(code.data, currentCode)
-                        currentCode = code.data;
                         axios({
                             method: 'post',
                             url: '/api/scan',
