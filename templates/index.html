@@ -9,6 +9,16 @@
     <script src="{{ url_for('static', filename='fontawesome/js/all.js') }}"></script>
     <link href="{{ url_for('static', filename='css/bulmaswatch.min.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='fontawesome/css/all.css') }}" rel="stylesheet">
+    <style>
+        #canvas {
+            background-color: #666;
+            /*Mirror code starts*/
+            transform: rotateY(180deg);
+            -webkit-transform:rotateY(180deg); /* Safari and Chrome */
+            -moz-transform:rotateY(180deg); /* Firefox */
+            /*Mirror code ends*/
+        }
+    </style>
 </head>
 <body>
 <section class="hero is-fullheight is-dark is-bold">
@@ -43,6 +53,9 @@
                             <div id="outputMessage" class="has-text-centered">
                                 <span class="is-size-4">No QR code detected.</span>
                             </div>
+                            <div id="waitingMessage" class="has-text-centered">
+                                <span class="is-size-4">Please wait a minute.</span>
+                            </div>
                             <br>
                             <div id="outputDataPanel">
                                 <p class="has-text-centered">
@@ -74,12 +87,17 @@
     var loadingMessage = document.getElementById("loadingMessage");
     var outputContainer = document.getElementById("output");
     var outputMessage = document.getElementById("outputMessage");
+    var waitingMessage = document.getElementById("waitingMessage");
     var outputData = document.getElementById("outputData");
     var outputDataPanel = document.getElementById("outputDataPanel");
     var scanTime = document.getElementById("scanTime");
     var currentCode = '';
     var lastScanTime = new Date();
     moment.locale('th');
+    outputMessage.hidden = false;
+    outputData.parentElement.hidden = true;
+    outputDataPanel.hidden = true;
+    waitingMessage.hidden = true;
 
     function drawLine(begin, end, color) {
         canvas.beginPath();
@@ -97,6 +115,26 @@
         video.play();
         requestAnimationFrame(tick);
     });
+    const delay = t => new Promise(resolve => setTimeout(resolve, t));
+
+    scan = async (code) => {
+        await axios({
+            method: 'post',
+            url: '/api/scan',
+            data: {
+                code: code
+            }}).then(function (resp) {
+            outputData.innerText = code + " " + resp.data.name;
+            scanTime.innerText = "แสกนเมื่อ " + moment(resp.data.checked_in).format('lll');
+            return delay(3000).then(()=>{
+                outputMessage.hidden = false;
+                waitingMessage.hidden = true;
+                outputData.parentElement.hidden = true;
+                outputDataPanel.hidden = true;
+                console.log('delayed..')
+            })
+        })
+    }
 
     function tick() {
         loadingMessage.innerText = "⌛ Loading video..."
@@ -117,22 +155,14 @@
                 drawLine(code.location.topRightCorner, code.location.bottomRightCorner, "#FF3B58");
                 drawLine(code.location.bottomRightCorner, code.location.bottomLeftCorner, "#FF3B58");
                 drawLine(code.location.bottomLeftCorner, code.location.topLeftCorner, "#FF3B58");
-                outputMessage.hidden = true;
-                outputDataPanel.hidden = false;
-                outputData.parentElement.hidden = false;
                 if (currentCode !== code.data) {
                     currentCode = code.data;
                     lastScanTime = new Date();
-                    axios({
-                        method: 'post',
-                        url: '/api/scan',
-                        data: {
-                            code: code.data
-                        }
-                    }).then(function (resp) {
-                        outputData.innerText = code.data + " " + resp.data.name;
-                        scanTime.innerText = "แสกนเมื่อ " + moment(resp.data.checked_in).format('lll');
-                    })
+                    outputMessage.hidden = true;
+                    outputDataPanel.hidden = false;
+                    outputData.parentElement.hidden = false;
+                    waitingMessage.hidden = true;
+                    scan(code.data);
                 } else {
                     // the same QR code can be rescanned after one minute
                     let rightnow = new Date();
@@ -140,22 +170,16 @@
                     let diffMins = Math.round(((gap % 86400000) % 3600000) / 60000);
                     lastScanTime = rightnow;
                     if (diffMins > 1) {
-                        axios({
-                            method: 'post',
-                            url: '/api/scan',
-                            data: {
-                                code: code.data
-                            }
-                        }).then(function (resp) {
-                            outputData.innerText = code.data + " " + resp.data.name;
-                            scanTime.innerText = "แสกนเมื่อ " + moment(resp.data.checked_in).format('lll');
-                        })
+                        outputMessage.hidden = true;
+                        outputDataPanel.hidden = false;
+                        outputData.parentElement.hidden = false;
+                        waitingMessage.hidden = true;
+                        scan(code.data);
+                    } else {
+                        waitingMessage.hidden = false;
+                        console.log('please wait.')
                     }
                 }
-            } else {
-                outputMessage.hidden = false;
-                outputData.parentElement.hidden = true;
-                outputDataPanel.hidden = true;
             }
         }
         requestAnimationFrame(tick);
